@@ -1,128 +1,84 @@
-printf "\nCommencing Setup Theme Review\n"
+#!/usr/bin/env bash
+# Provision WordPress Stable
 
-# If we delete public_html, let's just start over.
-if [ ! -d public_html ]
-then
+# Make a database, if we don't already have one
+echo -e "\nCreating database 'wordpress_themereview' (if it's not already there)"
+mysql -u root --password=root -e "CREATE DATABASE IF NOT EXISTS wordpress_themereview"
+mysql -u root --password=root -e "GRANT ALL PRIVILEGES ON wordpress_themereview.* TO wp@localhost IDENTIFIED BY 'wp';"
+echo -e "\n DB operations done.\n\n"
 
-    printf "Creating directory public_html for Theme review...\n"
-    mkdir public_html
-    cd public_html
+# Nginx Logs
+mkdir -p ${VVV_PATH_TO_SITE}/log
+touch ${VVV_PATH_TO_SITE}/log/error.log
+touch ${VVV_PATH_TO_SITE}/log/access.log
 
-    # **
-    # Database
-    # **
+# Install and configure the latest stable version of WordPress
+if [[ ! -d "${VVV_PATH_TO_SITE}/public_html" ]]; then
 
-    # Create the database over again.
-    printf "(Re-)Creating database 'wordpress_themereview'...\n"
-    mysql -u root --password=root -e "DROP DATABASE IF EXISTS \`wordpress_themereview\`"
-    mysql -u root --password=root -e "CREATE DATABASE IF NOT EXISTS \`wordpress_themereview\`"
-    mysql -u root --password=root -e "GRANT ALL PRIVILEGES ON \`wordpress_themereview\`.* TO wp@localhost IDENTIFIED BY 'wp';"
+  echo "Downloading WordPress Stable, see http://wordpress.org/"
+  cd ${VVV_PATH_TO_SITE}
+  curl -L -O "https://wordpress.org/latest.tar.gz"
+  noroot tar -xvf latest.tar.gz
+  mv wordpress public_html
+  rm latest.tar.gz
+  cd ${VVV_PATH_TO_SITE}/public_html
 
-    # **
-    # WordPress
-    # **
-
-    # Download WordPress
-    printf "Downloading WordPress in public_html...\n"
-    wp core download --allow-root
-
-    # Install WordPress.
-    printf "Creating wp-config in public_html...\n"
-    wp core config --dbname="wordpress_themereview" --dbuser=wp --dbpass=wp --dbhost="localhost" --allow-root --extra-php <<PHP
+  echo "Configuring WordPress Stable..."
+  noroot wp core config --dbname=wordpress_themereview --dbuser=wp --dbpass=wp --quiet --extra-php <<PHP
+// Match any requests made via xip.io.
+if ( isset( \$_SERVER['HTTP_HOST'] ) && preg_match('/^(themereview.wordpress.)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(.xip.io)\z/', \$_SERVER['HTTP_HOST'] ) ) {
+    define( 'WP_HOME', 'http://' . \$_SERVER['HTTP_HOST'] );
+    define( 'WP_SITEURL', 'http://' . \$_SERVER['HTTP_HOST'] );
+}
 define( 'WP_DEBUG', true );
-define( 'SCRIPT_DEBUG', true );
-define( 'WP_DEBUG_LOG', true );
 PHP
 
-    # Install into DB
-    wp core install --url=themereview.wordpress.dev --title="A WordPress Theme Reviewers VVV" --admin_user=admin --admin_password=password --admin_email=changme@changeme.com --allow-root
+  echo "Installing WordPress Stable..."
+  noroot wp core install --url=themereview.wordpress.dev --quiet --title="themereview WordPress Dev" --admin_name=admin --admin_email="admin@change.me" --admin_password="password"
 
-    # **
-    # Your themes
-    # **
-    printf 'Installing themes...\n'
-    for i in `ls ../*.zip`
-    do
-        wp theme install $i --allow-root
-    done
 
-    # **
-    # # Plugins
-    # **
+  # Install Sage
+  noroot wp theme install 'https://github.com/gkmurray/sage/archive/develop.zip'
 
-    printf 'Installing plugins...\n'
-    wp plugin install wordpress-importer --activate --allow-root
-    wp plugin install developer --activate --allow-root
-    wp plugin install theme-check --activate --allow-root
-    wp plugin install theme-mentor --activate --allow-root
-    wp plugin install theme-checklist --activate --allow-root
-    wp plugin install what-the-file --activate --allow-root
-    wp plugin install vip-scanner --activate --allow-root
-    wp plugin install wordpress-database-reset --activate --allow-root
-    wp plugin install rtl-tester --allow-root
-    wp plugin install piglatin --allow-root
-    wp plugin install debug-bar  --activate --allow-root
-    wp plugin install debug-bar-console  --activate --allow-root
-    wp plugin install debug-bar-cron  --activate --allow-root
-    wp plugin install debug-bar-extender  --activate --allow-root
-    wp plugin install rewrite-rules-inspector  --activate --allow-root
-    wp plugin install log-deprecated-notices  --activate --allow-root
-    wp plugin install log-deprecated-notices-extender  --activate --allow-root
-    wp plugin install log-viewer  --activate --allow-root
-    wp plugin install monster-widget  --activate --allow-root
-    wp plugin install user-switching  --activate --allow-root
-    wp plugin install regenerate-thumbnails  --activate --allow-root
-    wp plugin install simply-show-ids  --activate --allow-root
-    wp plugin install theme-test-drive  --activate --allow-root
-    wp plugin install wordpress-beta-tester  --activate --allow-root
+  # Install Plugins
+  echo "Installing plugins..."
+  noroot wp plugin install wordpress-importer --activate
+  noroot wp plugin install developer --activate
+  noroot wp plugin install theme-check --activate
+  noroot wp plugin install theme-mentor --activate
+  noroot wp plugin install what-the-file --activate
+  noroot wp plugin install wordpress-database-reset --activate
+  noroot wp plugin install rtl-tester
+  noroot wp plugin install piglatin
+  noroot wp plugin install debug-bar  --activate
+  noroot wp plugin install debug-bar-console  --activate
+  noroot wp plugin install debug-bar-cron  --activate
+  noroot wp plugin install debug-bar-extender  --activate
+  noroot wp plugin install rewrite-rules-inspector  --activate
+  noroot wp plugin install log-deprecated-notices  --activate
+  noroot wp plugin install log-deprecated-notices-extender  --activate
+  noroot wp plugin install log-viewer  --activate
+  noroot wp plugin install monster-widget  --activate
+  noroot wp plugin install user-switching  --activate
+  noroot wp plugin install regenerate-thumbnails  --activate
+  noroot wp plugin install simply-show-ids  --activate
+  noroot wp plugin install theme-test-drive  --activate
+  noroot wp plugin install wordpress-beta-tester  --activate
 
-    # **
-    # Unit Data
-    # **
+  # Import the unit data.
+  echo 'Installing unit test data...'
+  curl -O https://wpcom-themes.svn.automattic.com/demo/theme-unit-test-data.xml
+  noroot wp import theme-unit-test-data.xml --authors=create
+  rm theme-unit-test-data.xml
 
-    # Import the unit data.
-    printf 'Installing unit test data...\n'
-    curl -O https://wpcom-themes.svn.automattic.com/demo/theme-unit-test-data.xml
-    wp import theme-unit-test-data.xml --authors=create --allow-root
-    rm theme-unit-test-data.xml
-
-    # Replace url from unit data
-    printf 'Adjusting urls in database...\n'
-    wp search-replace 'wpthemetestdata.wordpress.com' 'themereview.wordpress.dev' --skip-columns=guid --allow-root
-
-    cd ..
+  # Replace url from unit data
+  echo 'Adjusting urls in database...'
+  noroot wp search-replace 'wpthemetestdata.wordpress.com' 'themereview.wordpress.dev' --skip-columns=guid
 
 else
 
-    cd public_html/
-
-    # Updates
-    if $(wp core is-installed --allow-root); then
-
-        # Update WordPress.
-        printf "Updating WordPress for Theme Review...\n"
-        wp core update --allow-root
-        wp core update-db --allow-root
-
-        # Update Plugins
-        printf "Updating plugins for Theme Review...\n"
-        wp plugin update --all --allow-root
-
-        # Update preloaded Themes
-        printf "Updating preloaded themes for Theme Review...\n"
-        wp theme update --all --allow-root
-
-        # **
-        # Your themes
-        # **
-        printf "Installing themes for Theme Review...\n"
-        for i in `ls ../*.zip`
-        do
-            wp theme install $i --allow-root
-        done
-
-    fi
-
-    cd ..
+  echo "Updating WordPress Stable..."
+  cd ${VVV_PATH_TO_SITE}/public_html
+  noroot wp core update
 
 fi
